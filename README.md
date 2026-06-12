@@ -2,9 +2,176 @@
 
 Multi-tenant workflow and approval system built with Node.js, TypeScript, PostgreSQL, and React.
 
-This repository is structured as a small monorepo:
+## Stack
 
-- `backend` - Express API, Prisma, PostgreSQL, workflow engine, approvals, audit logging
-- `frontend` - React app for tenant selection, items, approvals, workflows, and audit logs
+- Backend: Node.js, Express, TypeScript, Prisma, PostgreSQL, Zod
+- Frontend: React, TypeScript, Vite, React Query, Zustand, Axios
+- Tooling: npm workspaces, ESLint, strict TypeScript
 
-Implementation notes, setup steps, architecture decisions, and known limitations will be filled in as the system is built.
+## Repository Structure
+
+```txt
+backend/
+  prisma/
+    schema.prisma
+    seed.ts
+    migrations/
+  src/
+    config/
+    controllers/
+    middleware/
+    routes/
+    services/
+    repositories/
+    validators/
+    utils/
+
+frontend/
+  src/
+    app/
+    features/
+    shared/
+```
+
+The backend uses a layered structure:
+
+```txt
+routes -> middleware -> controllers -> services -> repositories -> Prisma/PostgreSQL
+```
+
+The frontend uses feature-based organization. Shared pieces stay in `shared/`; domain code lives under `features/`.
+
+## Local Setup
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create app-wise env files:
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Update `backend/.env` if your local PostgreSQL user, password, or database name is different.
+
+Create the database if it does not exist:
+
+```bash
+createdb workflow_approval_system
+```
+
+Run migrations:
+
+```bash
+npm run prisma:migrate --workspace backend
+```
+
+Seed demo data:
+
+```bash
+npm run seed --workspace backend
+```
+
+Start both apps:
+
+```bash
+npm run dev
+```
+
+Backend runs on `http://localhost:4000`.
+Frontend runs on `http://localhost:5173`.
+
+## Useful Commands
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+npm run prisma:generate --workspace backend
+npm run seed --workspace backend
+```
+
+## Seed Data
+
+All demo users use this password:
+
+```txt
+Password123!
+```
+
+### Acme Corp
+
+```txt
+alice@acme.com   ADMIN
+bob@acme.com     APPROVER
+carol@acme.com   MEMBER
+```
+
+Workflow:
+
+```txt
+Ticket Workflow
+NEW -> IN_PROGRESS       no approval
+IN_PROGRESS -> DONE      SINGLE approval by APPROVER
+SLA: 60 minutes
+```
+
+Items:
+
+```txt
+Item A   NEW
+Item B   IN_PROGRESS with pending approval assigned to Bob
+Item C   DONE, approved by Bob
+```
+
+Delegation:
+
+```txt
+Bob delegates approval authority to Carol for 30 days
+```
+
+### Northwind Ops
+
+```txt
+maya@northwind.test    ADMIN
+arjun@northwind.test   APPROVER
+```
+
+Workflow:
+
+```txt
+Purchase Request
+DRAFT -> REVIEW           no approval
+REVIEW -> APPROVED        ALL approval by APPROVER
+SLA: 120 minutes
+```
+
+Item:
+
+```txt
+Renew Postgres monitoring subscription
+state: REVIEW
+approval assigned to Arjun
+```
+
+## Architecture Decisions
+
+- Tenant isolation is app-enforced with authenticated membership checks and tenant-scoped database queries.
+- Tenant-scoped tables carry `tenant_id` and have indexes for common tenant-filtered reads.
+- Workflow definitions are versioned. Items reference `workflow_version_id`, so future workflow edits do not break existing items.
+- Approval rows are attached to `approval_requests`, not only to `(item, transition)`, to avoid reusing stale approvals across repeated transition attempts.
+- Item concurrency will use optimistic locking through the `items.version` column.
+- Audit logs are append-only in application code and are indexed by tenant, entity, item, and timestamp.
+- Env files are app-wise. Backend secrets stay in `backend/.env`; frontend only uses public `VITE_` variables.
+
+## Current Limitations
+
+- Auth routes and workflow/item APIs are not implemented yet; this commit establishes the scaffold, schema, migration, and seed data.
+- Quorum approval is modeled but not implemented in service logic yet.
+- SLA escalation is modeled for later service work; no cron behavior is implemented yet.
+- Tenant isolation is currently enforced at the application/query layer, not PostgreSQL row-level security.
+- No automated tests have been added yet.

@@ -6,3 +6,298 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum TenantRole {
+  ADMIN
+  APPROVER
+  MEMBER
+}
+
+enum ApprovalStrategy {
+  SINGLE
+  ALL
+  QUORUM
+}
+
+enum ApprovalRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuditAction {
+  USER_REGISTERED
+  WORKFLOW_CREATED
+  WORKFLOW_VERSION_CREATED
+  ITEM_CREATED
+  TRANSITION_REQUESTED
+  ITEM_TRANSITIONED
+  APPROVAL_CREATED
+  APPROVAL_APPROVED
+  APPROVAL_REJECTED
+  DELEGATION_CREATED
+  DELEGATION_REVOKED
+  SLA_BREACHED
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships      TenantMembership[]
+  workflows        Workflow[]
+  workflowVersions WorkflowVersion[]
+  workflowStates   WorkflowState[]
+  transitions      WorkflowTransition[]
+  items            Item[]
+  approvalRequests ApprovalRequest[]
+  approvals        Approval[]
+  delegations      Delegation[]
+  auditLogs        AuditLog[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  name         String
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships               TenantMembership[]
+  createdItems              Item[]             @relation("ItemCreator")
+  requestedApprovalRequests ApprovalRequest[]
+  approvalAssignments       Approval[]         @relation("ApprovalAssignee")
+  approvalDecisions         Approval[]         @relation("ApprovalDecider")
+  outgoingDelegations       Delegation[]       @relation("Delegator")
+  incomingDelegations       Delegation[]       @relation("Delegate")
+  auditLogs                 AuditLog[]         @relation("AuditActor")
+
+  @@map("users")
+}
+
+model TenantMembership {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @map("tenant_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  role      TenantRole
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@index([tenantId, role])
+  @@map("tenant_memberships")
+}
+
+model Workflow {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  name               String
+  slug               String
+  activeVersionId    String?  @unique @map("active_version_id") @db.Uuid
+  slaDurationMinutes Int?     @map("sla_duration_minutes")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versions      WorkflowVersion[] @relation("WorkflowVersions")
+  activeVersion WorkflowVersion?  @relation("ActiveWorkflowVersion", fields: [activeVersionId], references: [id])
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  workflowId String   @map("workflow_id") @db.Uuid
+  version    Int
+  isActive   Boolean  @default(false) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflow          Workflow             @relation("WorkflowVersions", fields: [workflowId], references: [id], onDelete: Cascade)
+  activeForWorkflow Workflow?            @relation("ActiveWorkflowVersion")
+  states            WorkflowState[]
+  transitions       WorkflowTransition[]
+  items             Item[]
+
+  @@unique([workflowId, version])
+  @@index([tenantId, workflowId])
+  @@map("workflow_versions")
+}
+
+model WorkflowState {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  workflowVersionId String   @map("workflow_version_id") @db.Uuid
+  key               String
+  name              String
+  position          Int
+  isInitial         Boolean  @default(false) @map("is_initial")
+  isFinal           Boolean  @default(false) @map("is_final")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowVersion WorkflowVersion      @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+  fromTransitions WorkflowTransition[] @relation("TransitionFromState")
+  toTransitions   WorkflowTransition[] @relation("TransitionToState")
+  items           Item[]
+
+  @@unique([workflowVersionId, key])
+  @@index([tenantId, workflowVersionId])
+  @@map("workflow_states")
+}
+
+model WorkflowTransition {
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id") @db.Uuid
+  workflowVersionId String            @map("workflow_version_id") @db.Uuid
+  fromStateId       String            @map("from_state_id") @db.Uuid
+  toStateId         String            @map("to_state_id") @db.Uuid
+  name              String
+  requiresApproval  Boolean           @default(false) @map("requires_approval")
+  approvalStrategy  ApprovalStrategy? @map("approval_strategy")
+  approverRole      TenantRole?       @map("approver_role")
+  quorumCount       Int?              @map("quorum_count")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowVersion  WorkflowVersion   @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+  fromState        WorkflowState     @relation("TransitionFromState", fields: [fromStateId], references: [id])
+  toState          WorkflowState     @relation("TransitionToState", fields: [toStateId], references: [id])
+  approvalRequests ApprovalRequest[]
+
+  @@unique([workflowVersionId, fromStateId, toStateId])
+  @@index([tenantId, workflowVersionId])
+  @@index([tenantId, approverRole])
+  @@map("workflow_transitions")
+}
+
+model Item {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
+  workflowVersionId String    @map("workflow_version_id") @db.Uuid
+  currentStateId    String    @map("current_state_id") @db.Uuid
+  createdById       String    @map("created_by_id") @db.Uuid
+  title             String
+  description       String?
+  version           Int       @default(1)
+  slaBreachedAt     DateTime? @map("sla_breached_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workflowVersion  WorkflowVersion   @relation(fields: [workflowVersionId], references: [id])
+  currentState     WorkflowState     @relation(fields: [currentStateId], references: [id])
+  createdBy        User              @relation("ItemCreator", fields: [createdById], references: [id])
+  approvalRequests ApprovalRequest[]
+  auditLogs        AuditLog[]
+
+  @@index([tenantId, currentStateId, createdAt])
+  @@index([tenantId, workflowVersionId])
+  @@index([tenantId, updatedAt])
+  @@map("items")
+}
+
+model ApprovalRequest {
+  id             String                @id @default(uuid()) @db.Uuid
+  tenantId       String                @map("tenant_id") @db.Uuid
+  itemId         String                @map("item_id") @db.Uuid
+  transitionId   String                @map("transition_id") @db.Uuid
+  requestedById  String                @map("requested_by_id") @db.Uuid
+  itemVersion    Int                   @map("item_version")
+  status         ApprovalRequestStatus @default(PENDING)
+  idempotencyKey String?               @map("idempotency_key")
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt     DateTime?             @map("resolved_at") @db.Timestamptz(6)
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item        Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  transition  WorkflowTransition @relation(fields: [transitionId], references: [id])
+  requestedBy User               @relation(fields: [requestedById], references: [id])
+  approvals   Approval[]
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, itemId, status])
+  @@index([tenantId, transitionId])
+  @@map("approval_requests")
+}
+
+model Approval {
+  id                 String         @id @default(uuid()) @db.Uuid
+  tenantId           String         @map("tenant_id") @db.Uuid
+  approvalRequestId  String         @map("approval_request_id") @db.Uuid
+  assignedApproverId String         @map("assigned_approver_id") @db.Uuid
+  decidedById        String?        @map("decided_by_id") @db.Uuid
+  status             ApprovalStatus @default(PENDING)
+  comment            String?
+  decidedAt          DateTime?      @map("decided_at") @db.Timestamptz(6)
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant           Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  approvalRequest  ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  assignedApprover User            @relation("ApprovalAssignee", fields: [assignedApproverId], references: [id])
+  decidedBy        User?           @relation("ApprovalDecider", fields: [decidedById], references: [id])
+
+  @@unique([approvalRequestId, assignedApproverId])
+  @@index([tenantId, assignedApproverId, status])
+  @@index([tenantId, status])
+  @@map("approvals")
+}
+
+model Delegation {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  delegatorId String    @map("delegator_id") @db.Uuid
+  delegateId  String    @map("delegate_id") @db.Uuid
+  validFrom   DateTime  @map("valid_from") @db.Timestamptz(6)
+  validTo     DateTime  @map("valid_to") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  delegator User   @relation("Delegator", fields: [delegatorId], references: [id])
+  delegate  User   @relation("Delegate", fields: [delegateId], references: [id])
+
+  @@index([tenantId, delegatorId, revokedAt])
+  @@index([tenantId, delegateId, validFrom, validTo])
+  @@map("delegations")
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  actorUserId String?     @map("actor_user_id") @db.Uuid
+  itemId      String?     @map("item_id") @db.Uuid
+  action      AuditAction
+  entityType  String      @map("entity_type")
+  entityId    String      @map("entity_id") @db.Uuid
+  metadata    Json?
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("AuditActor", fields: [actorUserId], references: [id])
+  item   Item?  @relation(fields: [itemId], references: [id])
+
+  @@index([tenantId, entityType, entityId, createdAt])
+  @@index([tenantId, itemId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("audit_logs")
+}

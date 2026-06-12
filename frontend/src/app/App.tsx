@@ -1,3 +1,11 @@
+import { AppProviders } from "./providers";
+import { AppRouter } from "./router";
+import "../shared/styles/global.css";
+
 export function App() {
-  return null;
+  return (
+    <AppProviders>
+      <AppRouter />
+    </AppProviders>
+  );
 }
