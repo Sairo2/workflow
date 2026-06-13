@@ -13,6 +13,7 @@ export function validateRequest(schemas: RequestSchemas): RequestHandler {
 
     if (schemas.body) {
       req.validated.body = schemas.body.parse(req.body);
+      req.body = req.validated.body;
     }
 
     if (schemas.query) {

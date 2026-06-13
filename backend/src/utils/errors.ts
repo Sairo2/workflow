@@ -19,8 +19,10 @@ export const badRequest = (code: string, message: string, details?: ErrorDetails
 export const unauthorized = (message = "Authentication required") =>
   new AppError(401, "UNAUTHORIZED", message);
 
-export const forbidden = (message = "You do not have access to this resource") =>
-  new AppError(403, "FORBIDDEN", message);
+export const forbidden = (
+  message = "You do not have access to this resource",
+  details?: ErrorDetails
+) => new AppError(403, "FORBIDDEN", message, details);
 
 export const notFound = (message = "Resource not found") =>
   new AppError(404, "NOT_FOUND", message);
