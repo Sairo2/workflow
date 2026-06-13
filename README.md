@@ -146,6 +146,18 @@ POST   /api/delegations
 DELETE /api/delegations/:id
 ```
 
+Audit:
+
+```txt
+GET /api/audit-logs
+```
+
+SLA:
+
+```txt
+POST /api/sla/check
+```
+
 Tenant-scoped routes use `Authorization: Bearer <token>` and, when the route needs tenant context, `X-Tenant-ID: <tenant id>`.
 
 ## Seed Data
@@ -221,12 +233,14 @@ approval assigned to Arjun
 - Approval decisions lock the item row first and the approval row second with `SELECT ... FOR UPDATE`, which keeps the lock order predictable under concurrent approver activity.
 - Approval actions are idempotent for repeated same-status decisions and return conflicts for opposite decisions after an approval is already decided.
 - Delegation is checked at approval time. A delegate can decide an approval only when an active, non-revoked delegation exists from the assigned approver to the acting user.
-- Audit logs are append-only in application code and are indexed by tenant, entity, item, and timestamp.
+- Audit logs are append-only in application code and protected by a PostgreSQL trigger that rejects direct updates and deletes.
+- Audit logs are queryable by tenant, entity, item, and timestamp.
+- SLA breaches are detected by comparing item age against the workflow SLA duration. A breach marks the item once and writes an `SLA_BREACHED` audit log.
 - Env files are app-wise. Backend secrets stay in `backend/.env`; frontend only uses public `VITE_` variables.
 
 ## Current Limitations
 
 - Quorum approval is modeled but currently evaluated like `SINGLE`; this is intentionally documented as a limitation instead of pretending full quorum behavior exists.
-- SLA escalation is modeled for later service work; no cron behavior is implemented yet.
+- SLA escalation currently writes an audit log only; no notifications or reassignment are implemented.
 - Tenant isolation is currently enforced at the application/query layer, not PostgreSQL row-level security.
 - No automated tests have been added yet.
