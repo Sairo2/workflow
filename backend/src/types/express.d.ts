@@ -15,6 +15,8 @@ declare global {
       };
       membership?: {
         role: TenantRole;
+        tenantId: string;
+        userId: string;
       };
     }
   }
