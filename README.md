@@ -111,6 +111,16 @@ Tenants:
 GET /api/tenants
 ```
 
+Workflows:
+
+```txt
+GET  /api/workflows
+POST /api/workflows
+GET  /api/workflows/:id
+GET  /api/workflows/:id/versions
+POST /api/workflows/:id/versions
+```
+
 Tenant-scoped routes use `Authorization: Bearer <token>` and, when the route needs tenant context, `X-Tenant-ID: <tenant id>`.
 
 ## Seed Data
@@ -188,7 +198,7 @@ approval assigned to Arjun
 
 ## Current Limitations
 
-- Workflow/item/approval APIs are not implemented yet; the current backend slice covers auth, tenant middleware, RBAC helpers, schema, migration, and seed data.
+- Item/approval APIs are not implemented yet; the current backend slices cover auth, tenant middleware, RBAC helpers, workflow/version APIs, schema, migration, and seed data.
 - Quorum approval is modeled but not implemented in service logic yet.
 - SLA escalation is modeled for later service work; no cron behavior is implemented yet.
 - Tenant isolation is currently enforced at the application/query layer, not PostgreSQL row-level security.

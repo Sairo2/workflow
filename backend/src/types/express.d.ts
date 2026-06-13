@@ -18,6 +18,11 @@ declare global {
         tenantId: string;
         userId: string;
       };
+      validated?: {
+        body?: unknown;
+        query?: unknown;
+        params?: unknown;
+      };
     }
   }
 }
