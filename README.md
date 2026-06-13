@@ -130,6 +130,22 @@ GET  /api/items/:id
 POST /api/items/:id/transitions
 ```
 
+Approvals:
+
+```txt
+GET  /api/approvals/pending
+POST /api/approvals/:id/approve
+POST /api/approvals/:id/reject
+```
+
+Delegations:
+
+```txt
+GET    /api/delegations
+POST   /api/delegations
+DELETE /api/delegations/:id
+```
+
 Tenant-scoped routes use `Authorization: Bearer <token>` and, when the route needs tenant context, `X-Tenant-ID: <tenant id>`.
 
 ## Seed Data
@@ -202,13 +218,15 @@ approval assigned to Arjun
 - Workflow definitions are versioned. Items reference `workflow_version_id`, so future workflow edits do not break existing items.
 - Approval rows are attached to `approval_requests`, not only to `(item, transition)`, to avoid reusing stale approvals across repeated transition attempts.
 - Item concurrency will use optimistic locking through the `items.version` column.
+- Approval decisions lock the item row first and the approval row second with `SELECT ... FOR UPDATE`, which keeps the lock order predictable under concurrent approver activity.
+- Approval actions are idempotent for repeated same-status decisions and return conflicts for opposite decisions after an approval is already decided.
+- Delegation is checked at approval time. A delegate can decide an approval only when an active, non-revoked delegation exists from the assigned approver to the acting user.
 - Audit logs are append-only in application code and are indexed by tenant, entity, item, and timestamp.
 - Env files are app-wise. Backend secrets stay in `backend/.env`; frontend only uses public `VITE_` variables.
 
 ## Current Limitations
 
-- Approval action APIs are not implemented yet; the item transition engine can create and inspect approval requests, but approvers cannot approve/reject through an endpoint until the next slice.
-- Quorum approval is modeled but not implemented in service logic yet.
+- Quorum approval is modeled but currently evaluated like `SINGLE`; this is intentionally documented as a limitation instead of pretending full quorum behavior exists.
 - SLA escalation is modeled for later service work; no cron behavior is implemented yet.
 - Tenant isolation is currently enforced at the application/query layer, not PostgreSQL row-level security.
 - No automated tests have been added yet.
