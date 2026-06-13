@@ -4,10 +4,6 @@ import { env } from "../config/env.js";
 import { prisma } from "../config/database.js";
 import { unauthorized } from "../utils/errors.js";
 
-type JwtPayload = {
-  sub: string;
-};
-
 export async function authMiddleware(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : undefined;
@@ -18,7 +14,13 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
   }
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+    const payload = jwt.verify(token, env.JWT_SECRET);
+
+    if (typeof payload === "string" || typeof payload.sub !== "string") {
+      next(unauthorized("Invalid session"));
+      return;
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
       select: { id: true, email: true, name: true }

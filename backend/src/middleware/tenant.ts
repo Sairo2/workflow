@@ -1,17 +1,17 @@
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../config/database.js";
-import { forbidden } from "../utils/errors.js";
+import { badRequest, forbidden, unauthorized } from "../utils/errors.js";
 
 export async function tenantMiddleware(req: Request, _res: Response, next: NextFunction) {
   const tenantId = req.header("X-Tenant-ID");
 
   if (!tenantId) {
-    next(forbidden("X-Tenant-ID header is required"));
+    next(badRequest("TENANT_HEADER_REQUIRED", "X-Tenant-ID header is required"));
     return;
   }
 
   if (!req.user) {
-    next(forbidden("Tenant context requires an authenticated user"));
+    next(unauthorized());
     return;
   }
 
@@ -26,6 +26,10 @@ export async function tenantMiddleware(req: Request, _res: Response, next: NextF
   }
 
   req.tenant = membership.tenant;
-  req.membership = { role: membership.role };
+  req.membership = {
+    role: membership.role,
+    tenantId: membership.tenantId,
+    userId: membership.userId
+  };
   next();
 }

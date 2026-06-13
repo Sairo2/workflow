@@ -95,6 +95,24 @@ npm run prisma:generate --workspace backend
 npm run seed --workspace backend
 ```
 
+## Implemented API Surface
+
+Auth:
+
+```txt
+POST /api/auth/register
+POST /api/auth/login
+GET  /api/auth/me
+```
+
+Tenants:
+
+```txt
+GET /api/tenants
+```
+
+Tenant-scoped routes use `Authorization: Bearer <token>` and, when the route needs tenant context, `X-Tenant-ID: <tenant id>`.
+
 ## Seed Data
 
 All demo users use this password:
@@ -170,7 +188,7 @@ approval assigned to Arjun
 
 ## Current Limitations
 
-- Auth routes and workflow/item APIs are not implemented yet; this commit establishes the scaffold, schema, migration, and seed data.
+- Workflow/item/approval APIs are not implemented yet; the current backend slice covers auth, tenant middleware, RBAC helpers, schema, migration, and seed data.
 - Quorum approval is modeled but not implemented in service logic yet.
 - SLA escalation is modeled for later service work; no cron behavior is implemented yet.
 - Tenant isolation is currently enforced at the application/query layer, not PostgreSQL row-level security.

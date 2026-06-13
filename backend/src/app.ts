@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { apiRouter } from "./routes/index.js";
+import { notFound } from "./utils/errors.js";
 
 export function createApp() {
   const app = express();
@@ -15,6 +16,9 @@ export function createApp() {
   app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
   app.use("/api", apiRouter);
+  app.use((_req, _res, next) => {
+    next(notFound("Route not found"));
+  });
   app.use(errorHandler);
 
   return app;
