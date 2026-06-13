@@ -30,41 +30,23 @@ async function ensureMembership(tenantId: string, userId: string, role: TenantRo
   });
 }
 
-async function clearTenantDemoData(tenantId: string) {
-  await prisma.$transaction([
-    prisma.auditLog.deleteMany({ where: { tenantId } }),
-    prisma.approval.deleteMany({ where: { tenantId } }),
-    prisma.approvalRequest.deleteMany({ where: { tenantId } }),
-    prisma.delegation.deleteMany({ where: { tenantId } }),
-    prisma.item.deleteMany({ where: { tenantId } }),
-    prisma.workflow.updateMany({ where: { tenantId }, data: { activeVersionId: null } }),
-    prisma.workflowTransition.deleteMany({ where: { tenantId } }),
-    prisma.workflowState.deleteMany({ where: { tenantId } }),
-    prisma.workflowVersion.deleteMany({ where: { tenantId } }),
-    prisma.workflow.deleteMany({ where: { tenantId } })
-  ]);
-}
-
-async function removeLegacyGlobexSeed() {
-  const globex = await prisma.tenant.findUnique({
-    where: { slug: "globex" },
-    select: { id: true }
-  });
-
-  if (!globex) {
-    return;
-  }
-
-  await clearTenantDemoData(globex.id);
-  await prisma.tenantMembership.deleteMany({ where: { tenantId: globex.id } });
-  await prisma.tenant.delete({ where: { id: globex.id } });
-  await prisma.user.deleteMany({
-    where: {
-      email: {
-        in: ["dave@globex.com", "eve@globex.com"]
-      }
-    }
-  });
+async function resetSeedData() {
+  await prisma.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      audit_logs,
+      approvals,
+      approval_requests,
+      delegations,
+      items,
+      workflow_transitions,
+      workflow_states,
+      workflow_versions,
+      workflows,
+      tenant_memberships,
+      tenants,
+      users
+    RESTART IDENTITY CASCADE
+  `);
 }
 
 async function seedTicketWorkflow(tenantId: string, adminId: string, approverId: string, memberId: string) {
@@ -365,7 +347,7 @@ async function seedPurchaseWorkflow(tenantId: string, adminId: string, approverI
 }
 
 async function main() {
-  await removeLegacyGlobexSeed();
+  await resetSeedData();
 
   const [alice, bob, carol, maya, arjun] = await Promise.all([
     upsertUser("alice@acme.com", "Alice Carter"),
@@ -394,9 +376,6 @@ async function main() {
     ensureMembership(northwind.id, maya.id, TenantRole.ADMIN),
     ensureMembership(northwind.id, arjun.id, TenantRole.APPROVER)
   ]);
-
-  await clearTenantDemoData(acme.id);
-  await clearTenantDemoData(northwind.id);
 
   await seedTicketWorkflow(acme.id, alice.id, bob.id, carol.id);
   await seedPurchaseWorkflow(northwind.id, maya.id, arjun.id);
