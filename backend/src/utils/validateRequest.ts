@@ -9,16 +9,18 @@ type RequestSchemas = {
 
 export function validateRequest(schemas: RequestSchemas): RequestHandler {
   return (req, _res, next) => {
+    req.validated = {};
+
     if (schemas.body) {
-      req.body = schemas.body.parse(req.body);
+      req.validated.body = schemas.body.parse(req.body);
     }
 
     if (schemas.query) {
-      req.query = schemas.query.parse(req.query) as typeof req.query;
+      req.validated.query = schemas.query.parse(req.query);
     }
 
     if (schemas.params) {
-      req.params = schemas.params.parse(req.params) as typeof req.params;
+      req.validated.params = schemas.params.parse(req.params);
     }
 
     next();
